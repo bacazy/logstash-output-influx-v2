@@ -123,6 +123,20 @@ public class InfluxV2 implements Output {
     public Collection<PluginConfigSpec<?>> configSchema() {
         List<PluginConfigSpec<?>> schema = new ArrayList<>();
         schema.add(ORG);
+        schema.add(URL);
+        schema.add(BUCKET);
+        schema.add(TOKEN);
+        schema.add(DEFAULT_TAGS);
+        schema.add(BATCH_SIZE);
+        schema.add(FLUSH_INTERVAL);
+        schema.add(JITTER_INTERVAL);
+        schema.add(RETRY_INTERVAL);
+        schema.add(MAX_RETRIES);
+        schema.add(MAX_RETRY_DELAY);
+        schema.add(EXPONENTIAL_BASE);
+        schema.add(BUFFER_LIMIT);
+        schema.add(TIME_PRECISION);
+        schema.add(MEASUREMENT);
         return schema;
     }
 
