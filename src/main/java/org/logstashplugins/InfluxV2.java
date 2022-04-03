@@ -15,7 +15,7 @@ public class InfluxV2 implements Output {
     private static final Logger logger = Logger.getLogger(InfluxV2.class.getName());
 
     public static final PluginConfigSpec<String> ORG = PluginConfigSpec.stringSetting("org", "", false, true);
-    public static final PluginConfigSpec<String> URL = PluginConfigSpec.stringSetting("org", "", false, true);
+    public static final PluginConfigSpec<String> URL = PluginConfigSpec.stringSetting("url", "", false, true);
     private static final PluginConfigSpec<String> BUCKET = PluginConfigSpec.stringSetting("bucket", "", false, true);
     private static final PluginConfigSpec<String> TOKEN = PluginConfigSpec.stringSetting("token", "", false, true);
     private static final PluginConfigSpec<Map<String, Object>> DEFAULT_TAGS = PluginConfigSpec.hashSetting("default_tags");
@@ -79,7 +79,6 @@ public class InfluxV2 implements Output {
     @Override
     public void output(final Collection<Event> events) {
         for (Event event : events) {
-            logger.info(JSON.createGson().create().toJson(event));
             writer.writePoint(convert(event));
         }
     }
@@ -87,6 +86,7 @@ public class InfluxV2 implements Output {
     private Point convert(Event event) {
         Point point = Point.measurement(getMeasurement());
         point.time(event.getEventTimestamp(), getWritePrecision());
+        point.addFields(event.toMap());
         return point;
     }
 
