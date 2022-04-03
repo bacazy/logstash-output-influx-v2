@@ -104,7 +104,8 @@ tasks.register("removeObsoleteJars") {
 }
 
 tasks.register("gem"){
-    dependsOn downloadAndInstallJRuby, removeObsoleteJars, vendor, generateRubySupportFiles
+    dependsOn downloadAndInstallJRuby
+    dependsOn removeObsoleteJars, vendor, generateRubySupportFiles
     doLast {
         buildGem(projectDir, buildDir, pluginInfo.pluginFullName() + ".gemspec")
     }
