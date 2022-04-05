@@ -3,7 +3,6 @@ package org.logstashplugins;
 import co.elastic.logstash.api.*;
 import com.influxdb.client.*;
 import com.influxdb.client.domain.WritePrecision;
-import com.influxdb.client.write.Point;
 
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
@@ -16,19 +15,21 @@ public class InfluxV2 implements Output {
 
     public static final PluginConfigSpec<String> ORG = PluginConfigSpec.stringSetting("org", "", false, true);
     public static final PluginConfigSpec<String> URL = PluginConfigSpec.stringSetting("url", "", false, true);
-    private static final PluginConfigSpec<String> BUCKET = PluginConfigSpec.stringSetting("bucket", "", false, true);
-    private static final PluginConfigSpec<String> TOKEN = PluginConfigSpec.stringSetting("token", "", false, true);
-    private static final PluginConfigSpec<Map<String, Object>> DEFAULT_TAGS = PluginConfigSpec.hashSetting("default_tags");
-    private static final PluginConfigSpec<Long> BATCH_SIZE = PluginConfigSpec.numSetting("batch_size", 1000);
-    private static final PluginConfigSpec<Long> FLUSH_INTERVAL = PluginConfigSpec.numSetting("flush_interval", 1000);
-    private static final PluginConfigSpec<Long> JITTER_INTERVAL = PluginConfigSpec.numSetting("jitter_interval", 0);
-    private static final PluginConfigSpec<Long> RETRY_INTERVAL = PluginConfigSpec.numSetting("retry_interval", 5000);
-    private static final PluginConfigSpec<Long> MAX_RETRIES = PluginConfigSpec.numSetting("max_retries", 3);
-    private static final PluginConfigSpec<Long> MAX_RETRY_DELAY = PluginConfigSpec.numSetting("max_retry_delay", 180000);
-    private static final PluginConfigSpec<Long> EXPONENTIAL_BASE = PluginConfigSpec.numSetting("exponential_base", 5);
-    private static final PluginConfigSpec<Long> BUFFER_LIMIT = PluginConfigSpec.numSetting("buffer_limit", 10000);
-    private static final PluginConfigSpec<String> TIME_PRECISION = PluginConfigSpec.stringSetting("time_precision", "ns");
-    private static final PluginConfigSpec<String> MEASUREMENT = PluginConfigSpec.stringSetting("measurement", "logstash");
+    public static final PluginConfigSpec<String> BUCKET = PluginConfigSpec.stringSetting("bucket", "", false, true);
+    public static final PluginConfigSpec<String> TOKEN = PluginConfigSpec.stringSetting("token", "", false, true);
+    public static final PluginConfigSpec<Map<String, Object>> DEFAULT_TAGS = PluginConfigSpec.hashSetting("default_tags");
+    public static final PluginConfigSpec<Long> BATCH_SIZE = PluginConfigSpec.numSetting("batch_size", 1000);
+    public static final PluginConfigSpec<Long> FLUSH_INTERVAL = PluginConfigSpec.numSetting("flush_interval", 1000);
+    public static final PluginConfigSpec<Long> JITTER_INTERVAL = PluginConfigSpec.numSetting("jitter_interval", 0);
+    public static final PluginConfigSpec<Long> RETRY_INTERVAL = PluginConfigSpec.numSetting("retry_interval", 5000);
+    public static final PluginConfigSpec<Long> MAX_RETRIES = PluginConfigSpec.numSetting("max_retries", 3);
+    public static final PluginConfigSpec<Long> MAX_RETRY_DELAY = PluginConfigSpec.numSetting("max_retry_delay", 180000);
+    public static final PluginConfigSpec<Long> EXPONENTIAL_BASE = PluginConfigSpec.numSetting("exponential_base", 5);
+    public static final PluginConfigSpec<Long> BUFFER_LIMIT = PluginConfigSpec.numSetting("buffer_limit", 10000);
+    public static final PluginConfigSpec<String> TIME_PRECISION = PluginConfigSpec.stringSetting("time_precision", "ns");
+    public static final PluginConfigSpec<String> MEASUREMENT = PluginConfigSpec.stringSetting("measurement", "logstash");
+    public static final PluginConfigSpec<List<Object>> TAGS = PluginConfigSpec.arraySetting("tags");
+    public static final PluginConfigSpec<List<Object>> EXCLUDES = PluginConfigSpec.arraySetting("excludes");
 
     private final String id;
     private final CountDownLatch done = new CountDownLatch(1);
@@ -36,6 +37,8 @@ public class InfluxV2 implements Output {
     private final Configuration config;
     private final InfluxDBClient client;
     private final WriteApi writer;
+    private final HashSet<Object> excludes;
+    private final HashSet<Object> tags;
     private volatile boolean stopped = false;
 
     public InfluxV2(final String id, final Configuration configuration, final Context context) {
@@ -46,6 +49,8 @@ public class InfluxV2 implements Output {
         this.client = InfluxDBClientFactory.create(options);
         WriteOptions writeOptions = buildWriteOptions();
         this.writer = client.getWriteApi(writeOptions);
+        this.excludes = new HashSet<>(Objects.nonNull(config.get(EXCLUDES))?config.get(EXCLUDES):new ArrayList<>());
+        this.tags = new HashSet<>(Objects.nonNull(config.get(TAGS))?config.get(TAGS):new ArrayList<>());
     }
 
     private WriteOptions buildWriteOptions() {
@@ -79,14 +84,41 @@ public class InfluxV2 implements Output {
     @Override
     public void output(final Collection<Event> events) {
         for (Event event : events) {
-            writer.writePoint(convert(event));
+            writer.writeRecord(getWritePrecision(), convert(event).toLineProtocol());
         }
     }
 
-    private Point convert(Event event) {
-        Point point = Point.measurement(getMeasurement());
+    private InfluxPoint convert(Event event) {
+        InfluxPoint point = InfluxPoint.measurement(getMeasurement());
         point.time(event.getEventTimestamp(), getWritePrecision());
-        point.addFields(event.toMap());
+        Map<String, Object> data = event.getData();
+        Map<String, Object> fields = new HashMap<>();
+
+        if (Objects.nonNull(config.get(DEFAULT_TAGS))) {
+            for (Map.Entry<String, Object> entry: config.get(DEFAULT_TAGS).entrySet()) {
+                point.addTag(entry.getKey(), String.valueOf(entry.getValue()));
+            }
+        }
+
+        for (Map.Entry<String, Object> entry :
+                data.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            if ("@timestamp".equals(key) || "@version".equals(key)) {
+                continue;
+            }
+            if (excludes.contains(key)) {
+                continue;
+            }
+            if (tags.contains(key)) {
+                point.addTag(key, String.valueOf(value));
+            }
+            point.addTag("version", "v2");
+
+            fields.put(key, value);
+        }
+
+        point.addFields(fields);
         return point;
     }
 
@@ -137,6 +169,8 @@ public class InfluxV2 implements Output {
         schema.add(BUFFER_LIMIT);
         schema.add(TIME_PRECISION);
         schema.add(MEASUREMENT);
+        schema.add(TAGS);
+        schema.add(EXCLUDES);
         return schema;
     }
 
