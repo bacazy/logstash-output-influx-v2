@@ -18,6 +18,7 @@ public class InfluxV2 implements Output {
     public static final PluginConfigSpec<String> BUCKET = PluginConfigSpec.stringSetting("bucket", "", false, true);
     public static final PluginConfigSpec<String> TOKEN = PluginConfigSpec.stringSetting("token", "", false, true);
     public static final PluginConfigSpec<Map<String, Object>> DEFAULT_TAGS = PluginConfigSpec.hashSetting("default_tags");
+    public static final PluginConfigSpec<Map<String, Object>> MAP_KEYS = PluginConfigSpec.hashSetting("map_keys");
     public static final PluginConfigSpec<Long> BATCH_SIZE = PluginConfigSpec.numSetting("batch_size", 1000);
     public static final PluginConfigSpec<Long> FLUSH_INTERVAL = PluginConfigSpec.numSetting("flush_interval", 1000);
     public static final PluginConfigSpec<Long> JITTER_INTERVAL = PluginConfigSpec.numSetting("jitter_interval", 0);
@@ -39,6 +40,7 @@ public class InfluxV2 implements Output {
     private final WriteApi writer;
     private final HashSet<Object> excludes;
     private final HashSet<Object> tags;
+    private final HashMap<String, Object> mapKeys;
     private volatile boolean stopped = false;
 
     public InfluxV2(final String id, final Configuration configuration, final Context context) {
@@ -51,6 +53,10 @@ public class InfluxV2 implements Output {
         this.writer = client.getWriteApi(writeOptions);
         this.excludes = new HashSet<>(Objects.nonNull(config.get(EXCLUDES))?config.get(EXCLUDES):new ArrayList<>());
         this.tags = new HashSet<>(Objects.nonNull(config.get(TAGS))?config.get(TAGS):new ArrayList<>());
+        this.mapKeys = new HashMap<>();
+        if (Objects.nonNull(config.get(MAP_KEYS))) {
+            this.mapKeys.putAll(config.get(MAP_KEYS));
+        }
     }
 
     private WriteOptions buildWriteOptions() {
@@ -96,13 +102,13 @@ public class InfluxV2 implements Output {
 
         if (Objects.nonNull(config.get(DEFAULT_TAGS))) {
             for (Map.Entry<String, Object> entry: config.get(DEFAULT_TAGS).entrySet()) {
-                point.addTag(entry.getKey(), String.valueOf(entry.getValue()));
+                point.addTag(getKey(entry.getKey()), String.valueOf(entry.getValue()));
             }
         }
 
         for (Map.Entry<String, Object> entry :
                 data.entrySet()) {
-            String key = entry.getKey();
+            String key = getKey(entry.getKey());
             Object value = entry.getValue();
             if ("@timestamp".equals(key) || "@version".equals(key)) {
                 continue;
@@ -113,13 +119,19 @@ public class InfluxV2 implements Output {
             if (tags.contains(key)) {
                 point.addTag(key, String.valueOf(value));
             }
-            point.addTag("version", "v2");
 
             fields.put(key, value);
         }
 
         point.addFields(fields);
         return point;
+    }
+
+    private String getKey(String key) {
+        if (mapKeys.containsKey(key)) {
+            return mapKeys.get(key).toString();
+        }
+        return key;
     }
 
     private WritePrecision getWritePrecision() {
@@ -171,6 +183,7 @@ public class InfluxV2 implements Output {
         schema.add(MEASUREMENT);
         schema.add(TAGS);
         schema.add(EXCLUDES);
+        schema.add(MAP_KEYS);
         return schema;
     }
 

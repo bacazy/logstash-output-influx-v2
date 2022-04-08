@@ -8,10 +8,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.text.NumberFormat;
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 public class InfluxPoint {
@@ -102,19 +99,21 @@ public class InfluxPoint {
             if (isNotDefined(value)) {
                 continue;
             }
+            String stringValue = String.valueOf(value);
+            if (Objects.isNull(stringValue) || stringValue.isEmpty()) {
+                continue;
+            }
             escapeKey(sb, field.getKey());
             sb.append('=');
             if (value.getClass().getSimpleName().contains("String")) {
-                String stringValue = String.valueOf(value);
                 sb.append('"');
                 escapeValue(sb, stringValue);
                 sb.append('"');
             } else {
-                sb.append(value);
+                escapeValue(sb, stringValue);
             }
 
             sb.append(',');
-
             appended = true;
         }
 
@@ -186,9 +185,7 @@ public class InfluxPoint {
     }
 
     private boolean isNotDefined(final Object value) {
-        return value == null
-                || (value instanceof Double && !Double.isFinite((Double) value))
-                || (value instanceof Float && !Float.isFinite((Float) value));
+        return Objects.isNull(value);
     }
 
     @Nonnull

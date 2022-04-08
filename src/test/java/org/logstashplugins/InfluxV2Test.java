@@ -16,33 +16,25 @@ public class InfluxV2Test {
 
     @Test
     public void testJavaOutputExample() {
-        String prefix = "Prefix";
         Map<String, Object> configValues = new HashMap<>();
-        configValues.put(InfluxV2.ORG.name(), prefix);
+        configValues.put(InfluxV2.ORG.name(), "bacazy");
+        configValues.put(InfluxV2.BUCKET.name(), "test");
+        configValues.put(InfluxV2.TOKEN.name(), "_B1R-KWhTgfd_QYDiiO1uSmmr9utit0d4vR47YXfI4vpUa1wGzKC-doLitjOBfnQWuor4NinAhSP2NYocWIwGA==");
+        configValues.put(InfluxV2.URL.name(), "http://localhost:8086");
         Configuration config = new ConfigurationImpl(configValues);
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
         InfluxV2 output = new InfluxV2("test-id", config, null);
 
-        String sourceField = "message";
-        int eventCount = 5;
+        int eventCount = 50000;
         Collection<Event> events = new ArrayList<>();
         for (int k = 0; k < eventCount; k++) {
             Event e = new org.logstash.Event();
-            e.setField(sourceField, "message " + k);
+            e.setField("tag_index", "tag_value_" + k);
+            e.setField("f_index", k);
+            e.setField("f_empty", "");
+            e.setField("f_null", null);
             events.add(e);
         }
 
         output.output(events);
-
-        String outputString = baos.toString();
-        int index = 0;
-        int lastIndex = 0;
-        while (index < eventCount) {
-            lastIndex = outputString.indexOf(prefix, lastIndex);
-            Assert.assertTrue("Prefix should exist in output string", lastIndex > -1);
-            lastIndex = outputString.indexOf("message " + index);
-            Assert.assertTrue("Message should exist in output string", lastIndex > -1);
-            index++;
-        }
     }
 }
